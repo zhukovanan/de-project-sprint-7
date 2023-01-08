@@ -72,7 +72,7 @@ def calculate_user_rec_mart(path_event_prqt: str,
     return df_mart.join(contacted_users, [F.col("user_left") == F.col("message_to"), F.col("user_right") == F.col("message_from")], "left")\
              .where("message_to is null")\
              .withColumn('processed_dttm', F.current_timestamp())\
-             .select("user_left", "user_right", 'processed_dttm', F.col("city_id").alias('zone_id'), "local_time").show(10)
+             .select("user_left", "user_right", 'processed_dttm', F.col("city_id").alias('zone_id'), "local_time")
 
 
 def main():
