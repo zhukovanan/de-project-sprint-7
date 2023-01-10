@@ -36,14 +36,10 @@ def calculate_user_rec_mart(path_event_prqt: str,
 
     #Находим откуда последний раз пользователи взаимодействовали
     df = df_city_from.union(df_city_to)\
-                         .where('date is not null')\
-                         .select(F.col('user'), 
-                         F.max(F.col('date')).over(window_d).alias('date'),
-                         F.last(F.col('city'),True).over(window).alias('city'),
-                         F.last(F.col('city_id'),True).over(window).alias('city_id'),
-                         F.last(F.col('city_lat'),True).over(window).alias('lat_to'),
-                         F.last(F.col('city_lng'),True).over(window).alias('lng_to'))\
-                        .distinct()\
+                        .where('date is not null')\
+                        .select(F.col('user'),F.col('date'),F.col('city'),F.col('city_id'),F.col('city_lat'),F.col('city_lng'))\
+                        .withColumn('rank', F.row_number().over(Window.partitionBy('user_id').orderBy(F.desc('date'))))\
+                        .filter('rank < 2')\
                         .withColumn("timezone",F.concat(F.lit("Australia/"),F.col('city')))\
                         .withColumn('timezone', F.regexp_replace('timezone', "(Bunbury)", "Perth"))\
                         .withColumn('timezone', F.regexp_replace('timezone', "(Mackay)|(Wollongong)|(Toowoomba)|(Townsville)|(Cairns)|(Rockhampton)|(Gold Coast)|(Ipswich)", "Brisbane"))\
@@ -69,10 +65,19 @@ def calculate_user_rec_mart(path_event_prqt: str,
     contacted_users = messages.union(messages.select("message_to", "message_from")).distinct()
 
 
-    return df_mart.join(contacted_users, [F.col("user_left") == F.col("message_to"), F.col("user_right") == F.col("message_from")], "left")\
-             .where("message_to is null")\
-             .withColumn('processed_dttm', F.current_timestamp())\
-             .select("user_left", "user_right", 'processed_dttm', F.col("city_id").alias('zone_id'), "local_time")
+    no_concact_users = df_mart.join(contacted_users, [F.col("user_left") == F.col("message_to"), F.col("user_right") == F.col("message_from")], "leftanti")
+             
+    #Соединяем с тем, кто подписан на один канал
+    user_subscription = df_events_city.where("event_type='subscription'")\
+                        .select(F.col("event.subscription_channel").alias("subscription_channel"),\
+                        F.col("event.user").alias("subscription_user"))\
+                        .distinct()
+
+    return no_concact_users.alias("p1").join[user_subscription.alias("p2"), [F.col("p1.user_left") == F.col("p2.subscription_user")], "inner"]\
+                                       .join[user_subscription.alias("p3"), [F.col("p1.user_right") == F.col("p3.subscription_user")], "inner"]\
+                                       .where("p2.subscription_channel == p3.subscription_channel")\
+                                       .withColumn('processed_dttm', F.current_timestamp())\
+                                       .select("user_left", "user_right", 'processed_dttm', F.col("city_id").alias('zone_id'), "local_time")
 
 
 def main():
@@ -93,5 +98,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
     
