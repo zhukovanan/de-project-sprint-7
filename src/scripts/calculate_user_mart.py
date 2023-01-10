@@ -43,8 +43,8 @@ def calculate_user_marts(path_event_prqt: str,
     w_act_city = Window.partitionBy('user_id') 
 
     user_act_city = user_data\
-                .withColumn('last_message_ts', F.max('message_ts').over(w_act_city))\
-                .where(F.col('message_ts') == F.col('last_message_ts'))\
+                .withColumn('rank', F.row_number().over(Window.partitionBy('user_id').orderBy(F.desc('message_ts'))))\
+                .filter('rank < 2')\
                 .select('user_id', 'city', 'message_ts')\
                 .withColumn("timezone",F.concat(F.lit("Australia/"),F.col('city')))\
                 .withColumn('timezone', F.regexp_replace('timezone', "(Bunbury)", "Perth"))\
@@ -68,6 +68,8 @@ def calculate_user_marts(path_event_prqt: str,
                 .groupBy('user_id', 'city', 'group')\
                 .count()\
                 .where(F.col('count') >= 27)\
+                .withColumn('rank', F.row_number().over(Window.partitionBy('user_id').orderBy(F.desc('group'))))\
+                .filter('rank < 2')\
                 .select('user_id' , 'city')
 
 
@@ -112,5 +114,6 @@ def main():
 
 if __name__ == '__main__':
     main()
+
 
     
